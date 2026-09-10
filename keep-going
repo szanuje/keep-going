@@ -1,0 +1,105 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# keep-going: keep macOS awake and periodically generate a tiny mouse movement
+# after the user has been idle for a while.
+
+IDLE_THRESHOLD="${KEEP_GOING_IDLE_SECONDS:-300}"
+CHECK_INTERVAL="${KEEP_GOING_CHECK_SECONDS:-15}"
+JIGGLE_PIXELS="${KEEP_GOING_JIGGLE_PIXELS:-1}"
+
+usage() {
+  cat <<'USAGE'
+Usage: keep-going
+
+Keeps macOS awake until Ctrl+C. After 5 minutes of user inactivity, it moves
+and restores the mouse cursor by 1 pixel to generate a small input event.
+
+Environment variables:
+  KEEP_GOING_IDLE_SECONDS    Idle time before jiggling (default: 300)
+  KEEP_GOING_CHECK_SECONDS   How often to check idle time (default: 15)
+  KEEP_GOING_JIGGLE_PIXELS   Relative mouse movement in pixels (default: 1)
+
+Press Ctrl+C to stop.
+USAGE
+}
+
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+  "") ;;
+  *)
+    echo "Unknown argument: $1" >&2
+    usage >&2
+    exit 2
+    ;;
+esac
+
+if [[ "$(uname -s)" != "Darwin" ]]; then
+  echo "keep-going only supports macOS." >&2
+  exit 1
+fi
+
+for value_name in IDLE_THRESHOLD CHECK_INTERVAL JIGGLE_PIXELS; do
+  value="${!value_name}"
+  if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+    echo "$value_name must be a positive integer; got: $value" >&2
+    exit 1
+  fi
+done
+
+CLICLICK="$(command -v cliclick || true)"
+if [[ -z "$CLICLICK" ]]; then
+  echo "Missing dependency: cliclick" >&2
+  echo "Install it with: brew install cliclick" >&2
+  exit 1
+fi
+
+CAFFEINATE_PID=""
+cleanup() {
+  if [[ -n "$CAFFEINATE_PID" ]]; then
+    kill "$CAFFEINATE_PID" 2>/dev/null || true
+    wait "$CAFFEINATE_PID" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM HUP
+
+# Prevent idle system sleep while this script is alive. The display may still
+# sleep normally. -w ties caffeinate to this shell's PID as an extra safeguard.
+caffeinate -i -w $$ &
+CAFFEINATE_PID=$!
+last_jiggle=0
+
+echo "keep-going is active. Press Ctrl+C to stop."
+echo "  idle threshold: ${IDLE_THRESHOLD}s"
+echo "  check interval: ${CHECK_INTERVAL}s"
+echo "  jiggle distance: ${JIGGLE_PIXELS}px"
+
+while true; do
+  idle_ns="$(ioreg -c IOHIDSystem -d 1 | awk '/HIDIdleTime/ { print $NF; exit }')"
+
+  if [[ "$idle_ns" =~ ^[0-9]+$ ]]; then
+    idle_seconds=$(( idle_ns / 1000000000 ))
+
+    now="$(date +%s)"
+
+    # The second condition prevents repeated jiggling every CHECK_INTERVAL if a
+    # macOS version/app does not count synthetic movement toward HIDIdleTime.
+    if (( idle_seconds >= IDLE_THRESHOLD && now - last_jiggle >= IDLE_THRESHOLD )); then
+      # Move the cursor a tiny amount and put it straight back. cliclick posts
+      # macOS mouse events rather than merely changing a stored coordinate.
+      "$CLICLICK" "m:+${JIGGLE_PIXELS},+0"
+      sleep 0.05
+      "$CLICLICK" "m:-${JIGGLE_PIXELS},+0"
+      last_jiggle="$now"
+    fi
+  else
+    echo "Warning: could not read HID idle time; retrying." >&2
+  fi
+
+  sleep "$CHECK_INTERVAL"
+done
