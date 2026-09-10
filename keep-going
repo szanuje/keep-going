@@ -80,11 +80,12 @@ echo "  check interval: ${CHECK_INTERVAL}s"
 echo "  jiggle distance: ${JIGGLE_PIXELS}px"
 
 while true; do
-  idle_ns="$(ioreg -c IOHIDSystem -d 1 | awk '/HIDIdleTime/ { print $NF; exit }')"
+  # -l is required on newer macOS versions to reliably expose HIDIdleTime.
+  # Do not constrain registry traversal depth; IOHIDSystem may be nested deeper.
+  idle_ns="$(ioreg -l -c IOHIDSystem | awk '/"HIDIdleTime"/ { print $NF; exit }')"
 
   if [[ "$idle_ns" =~ ^[0-9]+$ ]]; then
     idle_seconds=$(( idle_ns / 1000000000 ))
-
     now="$(date +%s)"
 
     # The second condition prevents repeated jiggling every CHECK_INTERVAL if a
