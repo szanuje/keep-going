@@ -4,58 +4,36 @@ A tiny macOS command-line utility that keeps the Mac awake and, after a period
 of inactivity, nudges the mouse cursor by 1 pixel and immediately restores it.
 It runs until you press `Ctrl+C`.
 
-## Requirements
+## Install
+
+Because this repository is private, installation uses your authenticated
+GitHub CLI session.
+
+Prerequisites:
 
 - macOS
-- [Homebrew](https://brew.sh/)
-- [`cliclick`](https://github.com/BlueM/cliclick)
+- [GitHub CLI](https://cli.github.com/) authenticated with `gh auth login`
+- [Homebrew](https://brew.sh/) if `cliclick` is not already installed
+
+Install with one command:
 
 ```sh
-brew install cliclick
+gh api repos/szanuje/keep-going/contents/install.sh \
+  -H 'Accept: application/vnd.github.raw+json' | bash
 ```
 
-The terminal app that runs `keep-going` may need permission under:
+The installer automatically:
+
+- installs `cliclick` with Homebrew if needed;
+- downloads the latest `keep-going` from `main`;
+- installs it as `/usr/local/bin/keep-going`;
+- makes it executable.
+
+It may ask for your administrator password when writing to `/usr/local/bin`.
+
+The terminal app that runs `keep-going` may also need permission under:
 
 **System Settings → Privacy & Security → Accessibility**
-
-## Install from this private repository
-
-Because the repository is private, an unauthenticated `raw.githubusercontent.com`
-URL cannot be used. If GitHub CLI is authenticated with access to the repo:
-
-```sh
-tmp="$(mktemp)" && \
-  gh api repos/szanuje/keep-going/contents/keep-going \
-    -H 'Accept: application/vnd.github.raw+json' > "$tmp" && \
-  sudo install -m 0755 "$tmp" /usr/local/bin/keep-going; \
-  status=$?; rm -f "$tmp"; exit "$status"
-```
-
-This uses your existing `gh` authentication; no token needs to be copied into
-the command line. GitHub's Contents API supports returning raw file bytes via
-its `application/vnd.github.raw+json` media type.
-
-If you prefer a user-owned install location:
-
-```sh
-mkdir -p ~/.local/bin
-tmp="$(mktemp)" && \
-  gh api repos/szanuje/keep-going/contents/keep-going \
-    -H 'Accept: application/vnd.github.raw+json' > "$tmp" && \
-  install -m 0755 "$tmp" ~/.local/bin/keep-going; \
-  status=$?; rm -f "$tmp"; exit "$status"
-```
-
-Make sure `~/.local/bin` is in your `PATH`.
-
-## Install with curl if the repository becomes public
-
-```sh
-tmp="$(mktemp)" && \
-  curl -fsSL https://raw.githubusercontent.com/szanuje/keep-going/main/keep-going -o "$tmp" && \
-  sudo install -m 0755 "$tmp" /usr/local/bin/keep-going; \
-  status=$?; rm -f "$tmp"; exit "$status"
-```
 
 ## Usage
 
@@ -89,6 +67,18 @@ Example: jiggle after 4 minutes of inactivity:
 ```sh
 KEEP_GOING_IDLE_SECONDS=240 keep-going
 ```
+
+### Custom install directory
+
+To avoid installing into `/usr/local/bin`, set `KEEP_GOING_INSTALL_DIR`:
+
+```sh
+gh api repos/szanuje/keep-going/contents/install.sh \
+  -H 'Accept: application/vnd.github.raw+json' | \
+  KEEP_GOING_INSTALL_DIR="$HOME/.local/bin" bash
+```
+
+Make sure the chosen directory is in your `PATH`.
 
 ## How it works
 
