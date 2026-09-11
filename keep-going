@@ -80,10 +80,12 @@ echo "  check interval: ${CHECK_INTERVAL}s"
 echo "  jiggle distance: ${JIGGLE_PIXELS}px"
 
 while true; do
-  # -l is required on newer macOS versions to reliably expose HIDIdleTime.
+  # ioreg can occasionally emit bytes that are invalid in the user's UTF-8
+  # locale. Parse this low-level system output in the C locale so awk treats
+  # it byte-for-byte instead of attempting multibyte character conversion.
   # Do not exit awk early: with `set -o pipefail`, doing so can SIGPIPE ioreg
   # and cause the whole script to terminate even though a value was found.
-  idle_ns="$(ioreg -l -c IOHIDSystem | awk '/"HIDIdleTime"/ && !found { print $NF; found=1 }')"
+  idle_ns="$(LC_ALL=C ioreg -l -c IOHIDSystem | LC_ALL=C awk '/"HIDIdleTime"/ && !found { print $NF; found=1 }')"
 
   if [[ "$idle_ns" =~ ^[0-9]+$ ]]; then
     idle_seconds=$(( idle_ns / 1000000000 ))
